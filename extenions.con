@@ -1,0 +1,106 @@
+[general]
+static=yes
+writeprotect=yes
+priorityjumping=no
+autofallthrough=no
+
+[globals]
+ATTENDED_TRANSFER_COMPLETE_SOUND=beep
+
+[internal]
+exten => _6XXX,1,Answer()
+exten => _6XXX,n,Dial(PJSIP/${EXTEN},20)
+exten => _6XXX,n,Hangup()
+;exten => 6002,1,Dial(PJSIP/6002,20)
+
+[office-phones]
+
+exten => 1001,1,Dial(PJSIP/alice-softphone)
+
+exten => 1002,1,Dial(PJSIP/bob-softphone)
+[textmessages]
+exten => 6001,1,Gosub(send-text,s,1,(6001))
+exten => 6002,1,Gosub(send-text,s,1,(6002))
+exten => 300,1,Gosub(send-text,s,1,(User3))
+exten => e,1,Hangup()
+
+; Handle failed messaging
+;exten => _.,n(sendfailedmsg),NoOp(Sending error to user)
+;exten => _.,n,Set(SRC=${MESSAGE(from)})
+;exten => _.,n,Set(DST=${MESSAGE(to)})
+;exten => _.,n,Set(MSG=${MESSAGE(body)}) 
+;exten => _.,n,Set(MESSAGE(body)="[${STRFTIME(${EPOCH},,%d%m%Y-%H:%M:%S)}] Your message to ${EXTEN} has failed. Sending when available")
+;exten => _.,n,Set(ME_1=${CUT(MESSAGE(from),<,2)})
+;exten => _.,n,Set(ACTUALFROM=${CUT(ME_1,@,1)})
+;exten => _.,n,MessageSend(${ACTUALFROM},ServiceCenter)
+;exten => _.,n,GotoIf($["${INQUEUE}" != "1"]?startq)
+;exten => _.,n,Hangup()
+;
+;exten => _.,n(startq),NoOp(Queueing messaging for offline)
+;exten => _.,n,Set(MSGTIME=${STRFTIME(${EPOCH},,%d%m%Y-%H:%M:%S)})
+;exten => _.,n,SYSTEM(/var/lib/asterisk/agi-bin/astqueue.sh –SRC ‘${SRC}’ –DST ‘${DST}’ –MSG ‘${MSG}’)
+;exten => _.,n,Hangup()[app-fakeanswer]
+;exten => _.,1,NoCDR
+;exten => _.,n,Set(DESTDEV=${EXTEN})
+;exten => _.,n,Set(THISDEVSTATE=${DEVICE_STATE(SIP/${DESTDEV})})
+;exten => _.,n,GotoIf($["${THISDEVSTATE}" = "UNAVAILABLE"]?hang)
+;exten => _.,n,GotoIf($["${THISDEVSTATE}" = "UNKNOWN"]?hang)
+;exten => _.,n,Answer
+;exten => _.,n,Hangup()
+;exten => _.,n(hang),Hangup()
+
+[messages]
+                                                                                                                                                                                    
+exten => _X.,1,Set(ACTUALTO=${CUT(MESSAGE(to),@,1)})                                                                                                                                          
+exten => _X.,n,MessageSend(${ACTUALTO},${MESSAGE(from)})                                                                                                                                      
+exten => _X.,n,NoOp(Send status is ${MESSAGE_SEND_STATUS})                                                                                                                                    
+exten => _X.,n,GotoIf($["${MESSAGE_SEND_STATUS}" != "SUCCESS"]?sendfailedmsg)                                                                                                                 
+exten => _X.,n,Hangup()                                                                                                                                                                       
+;                                                                                                                                                                                             
+; Handle failed messaging                                                                                                                                                                     
+exten => _X.,n(sendfailedmsg),Set(MESSAGE(body)="[${STRFTIME(${EPOCH},,%d%m%Y-%H:%M:%S)}] 
+Your message to ${EXTEN} has failed. Retry later.")                                                 
+exten => _X.,n,Set(ME_1=${CUT(MESSAGE(from),<,2)})                                                                                                                                            
+exten => _X.,n,Set(ACTUALFROM=${CUT(ME_1,@,1)})                                                                                                                                               
+exten => _X.,n,MessageSend(${ACTUALFROM},ServiceCenter)                                                                                                                                       
+exten => _X.,n,Hangup() 
+
+[subscriptions]
+exten => 100,hint,SIP/User1
+exten => 200,hint,SIP/User2
+exten => 300,hint,SIP/User3
+
+[from-extensions]
+; Feature Codes:
+exten => *65,1,Gosub(moh,s,1)
+; Extensions 
+exten => 100,1,Gosub(dial-extension,s,1,(User1))
+exten => 200,1,Gosub(dial-extension,s,1,(User2))
+exten => 300,1,Gosub(dial-extension,s,1,(User3))
+; Anything else, Hangup
+exten => _[+*0-9].,1,NoOp(You called: ${EXTEN})
+exten => _[+*0-9].,n,Hangup(1)
+exten => e,1,Hangup()
+
+[moh]
+exten => s,1,NoOp(Music On Hold)
+exten => s,n,Ringing()
+exten => s,n,Wait(2)
+exten => s,n,Answer()
+exten => s,n,Wait(1)
+exten => s,n,MusicOnHold()
+
+[dial-extension]
+exten => s,1,NoOp(Calling: ${ARG1})
+exten => s,n,Dial(SIP/${ARG1},30)
+exten => s,n,Hangup()
+exten => e,1,Hangup()
+
+[send-text]
+exten => s,1,NoOp(Sending Text To: ${ARG1})
+exten => s,n,Set(PEER=${CUT(CUT(CUT(MESSAGE(from),@,1),<,2),:,2)})
+exten => s,n,Set(FROM=${SHELL(asterisk -rx 'sip show peer ${PEER}' | grep 'Callerid' | cut -d':' -f2- | sed 's/^\ *//' | tr -d '\n')})
+exten => s,n,Set(CALLERID_NUM=${CUT(CUT(FROM,>,1),<,2)})
+exten => s,n,Set(FROM_SIP=${STRREPLACE(MESSAGE(from),<sip:${PEER}@,<sip:${CALLERID_NUM}@)})
+exten => s,n,MessageSend(sip:${ARG1},${FROM_SIP})
+exten => s,n,Hangup()
